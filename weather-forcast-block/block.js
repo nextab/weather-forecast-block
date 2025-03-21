@@ -1,22 +1,24 @@
-(function (wp) {
+(function(wp) {
     const { registerBlockType } = wp.blocks;
     const { InspectorControls } = wp.blockEditor;
-    const { PanelBody, SelectControl, TextControl } = wp.components;
+    const { PanelBody, TextControl } = wp.components;
     const { useState } = wp.element;
 
-    // Predefined list of cities
-    const cities = [
-        { label: 'London', value: 'London' },
-        { label: 'New York', value: 'New York' },
-        { label: 'Tokyo', value: 'Tokyo' },
-        { label: 'Paris', value: 'Paris' },
-        { label: 'Sydney', value: 'Sydney' },
-        { label: 'Moscow', value: 'Moscow' },
-        { label: 'Berlin', value: 'Berlin' }
-    ];
+    // Inline-CSS im Block-Editor hinzufügen
+    if (wp.element.render) { // Sicherstellen, dass dies nur im Editor läuft
+        const style = document.createElement('style');
+        style.textContent = `
+            .weather-block-editor .weather-preview {
+                padding: 20px;
+                background: #f5f5f5;
+                text-align: center;
+            }
+        `;
+        document.head.appendChild(style);
+    }
 
     registerBlockType('weather-forecast/block', {
-        title: 'Weather Forecast',
+        title: 'Wettervorhersage',
         icon: 'cloud',
         category: 'widgets',
         attributes: {
@@ -30,7 +32,7 @@
             }
         },
 
-        edit: function (props) {
+        edit: function(props) {
             const { attributes, setAttributes } = props;
             const { location, apiKey } = attributes;
 
@@ -44,28 +46,28 @@
                             {},
                             wp.element.createElement(
                                 PanelBody,
-                                { title: 'Weather Settings' },
+                                { title: 'Wettereinstellungen' },
                                 [
                                     wp.element.createElement(
                                         TextControl,
                                         {
-                                            label: 'OpenWeatherMap API Key',
+                                            label: 'OpenWeatherMap API-Schlüssel',
                                             value: apiKey,
                                             onChange: (newApiKey) => {
                                                 setAttributes({ apiKey: newApiKey });
                                             },
-                                            help: 'Enter your OpenWeatherMap API key here. You can get one from openweathermap.org'
+                                            help: 'Geben Sie hier Ihren OpenWeatherMap API-Schlüssel ein. Sie können einen auf openweathermap.org erhalten.'
                                         }
                                     ),
                                     wp.element.createElement(
-                                        SelectControl,
+                                        TextControl,
                                         {
-                                            label: 'Select Location',
+                                            label: 'Ortsangabe',
                                             value: location,
-                                            options: cities,
                                             onChange: (newLocation) => {
                                                 setAttributes({ location: newLocation });
-                                            }
+                                            },
+                                            help: 'Geben Sie einen Städtenamen oder einen OpenWeatherMap-Ortscode ein (z. B. "London", "Paris" oder eine Stadt-ID).'
                                         }
                                     )
                                 ]
@@ -74,15 +76,14 @@
                         wp.element.createElement(
                             'div',
                             { className: 'weather-preview' },
-                            `Weather forecast for ${location} will be displayed here`
+                            `Wettervorhersage für ${location} wird hier angezeigt`
                         )
                     ]
                 )
             );
         },
 
-        save: function () {
-            // Server-side rendering, so no save content needed
+        save: function() {
             return null;
         }
     });

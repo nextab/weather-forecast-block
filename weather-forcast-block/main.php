@@ -1,17 +1,17 @@
 <?php
 /*
-Plugin Name: Weather Forecast Block
-Description: Adds a weather forecast block to the Gutenberg editor using OpenWeatherMap API
-Version: 1.3.0
+Plugin Name: Wettervorhersage-Block
+Description: Fügt einen Wettervorhersage-Block zum Gutenberg-Editor hinzu, der die OpenWeatherMap-API verwendet
+Version: 1.6.1
 Author: CEATE
 */
 
-// Prevent direct access
+// Verhindern direkten Zugriffs
 if (!defined('ABSPATH')) {
     exit;
 }
 
-// Enqueue block editor assets
+// Einbinden der Block-Editor-Assets
 function weather_block_register_block()
 {
     wp_register_script(
@@ -38,129 +38,153 @@ function weather_block_register_block()
 }
 add_action('init', 'weather_block_register_block');
 
-// Weather icons mapping
-function get_weather_icon($description)
+// Wettericons-Zuordnung
+function get_weather_icon($icon_name)
 {
-    // Convert description to file name format (lowercase, spaces to dashes)
-    $icon_name = str_replace(' ', '-', strtolower($description));
-    $icon_path = plugin_dir_path(__FILE__) . 'icons/' . $icon_name . '.svg';
-    $icon_url = plugins_url('icons/' . $icon_name . '.svg', __FILE__);
+    $icon_name_stripped = preg_replace('/\D/', '', $icon_name);
+    $icon_path = plugin_dir_path(__FILE__) . 'icons/' . $icon_name_stripped . '.svg';
 
-    // Check if the icon file exists
     if (file_exists($icon_path)) {
-        // Load the SVG content
         $svg_content = file_get_contents($icon_path);
-        // Add a class to the SVG for styling
         $svg_content = str_replace('<svg', '<svg class="weather-icon"', $svg_content);
         return $svg_content;
     }
-
-    // Fallback to text if icon not found
-    return '<span>' . esc_html($description) . '</span>';
+    return ''; // Fallback if icon not found
 }
 
-// Temperature icons
+// Temperatur-Icons
 function get_temp_icon($type)
 {
-    $max_icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5.81 10.124" class="temperature-min-max__icon"><path d="M3.401 9h-1V0h1z"></path><path d="M2.901 10.124l-2.9-3.873.8-.6 2.1 2.806L5.013 5.65l.8.6z"></path></svg>';
-    $min_icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5.81 10.124" class="temperature-min-max__icon"><path d="M3.401 9h-1V0h1z"></path><path d="M2.901 10.124l-2.9-3.873.8-.6 2.1 2.806L5.013 5.65l.8.6z"></path></svg>';
+    $max_icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5.81 10.124" class="temperature-max__icon"><path d="M3.401 9h-1V0h1z"></path><path d="M2.901 10.124l-2.9-3.873.8-.6 2.1 2.806L5.013 5.65l.8.6z"></path></svg>';
+    $min_icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5.81 10.124" class="temperature-min__icon"><path d="M3.401 9h-1V0h1z"></path><path d="M2.901 10.124l-2.9-3.873.8-.6 2.1 2.806L5.013 5.65l.8.6z"></path></svg>';
     return $type === 'max' ? $max_icon : $min_icon;
 }
 
-// Server-side render callback
+// Serverseitiger Render-Callback
 function weather_block_render_callback($attributes)
 {
     $location = $attributes['location'];
     $api_key = $attributes['apiKey'];
 
-    // Check if API key is provided
     if (empty($api_key)) {
-        return '<p>Please enter your OpenWeatherMap API key in the block settings.</p>';
+        return '<p>Bitte geben Sie Ihren OpenWeatherMap API-Schlüssel in den Blockeinstellungen ein.</p>';
     }
 
     $cache_key = 'weather_' . md5($location);
     $weather_data = get_transient($cache_key);
 
+    // Für Debugging: Cache temporär ignorieren
+    $weather_data = false; // Erzwingt einen neuen API-Aufruf
+
     if (false === $weather_data) {
-        $lat_lon_url = "http://api.openweathermap.org/geo/1.0/direct?q=" . urlencode($location) . "&limit=1&appid=" . $api_key;
-        $lat_lon_response = wp_remote_get($lat_lon_url);
+        $weather_url = is_numeric($location)
+            ? "https://api.openweathermap.org/data/2.5/forecast?id={$location}&appid={$api_key}&units=metric&lang=de"
+            : "https://api.openweathermap.org/data/2.5/forecast?q=" . urlencode($location) . "&appid={$api_key}&units=metric&lang=de";
 
-        if (is_wp_error($lat_lon_response)) {
-            return '<p>Error fetching weather data: ' . esc_html($lat_lon_response->get_error_message()) . '</p>';
-        }
-
-        $lat_lon_data = json_decode(wp_remote_retrieve_body($lat_lon_response));
-        if (empty($lat_lon_data)) {
-            return '<p>Location not found</p>';
-        }
-
-        $lat = $lat_lon_data[0]->lat;
-        $lon = $lat_lon_data[0]->lon;
-
-        $weather_url = "https://api.openweathermap.org/data/2.5/forecast?lat={$lat}&lon={$lon}&appid={$api_key}&units=metric";
         $weather_response = wp_remote_get($weather_url);
 
         if (is_wp_error($weather_response)) {
-            return '<p>Error fetching weather data: ' . esc_html($weather_response->get_error_message()) . '</p>';
+            return '<p>Fehler beim Abrufen der Wetterdaten: ' . esc_html($weather_response->get_error_message()) . '</p>';
         }
 
         $weather_data = json_decode(wp_remote_retrieve_body($weather_response));
+
+        // Debugging: Rohdaten ausgeben, um die API-Antwort zu überprüfen
+        // if (current_user_can('administrator')) {
+        //     echo '<pre>API-URL: ' . esc_html($weather_url) . '</pre>';
+        //     echo '<pre>API-Daten: ' . print_r($weather_data, true) . '</pre>';
+        // }
+
         if (isset($weather_data->cod) && $weather_data->cod == 401) {
-            return '<p>Invalid API key. Please check your OpenWeatherMap API key in the block settings.</p>';
+            return '<p>Ungültiger API-Schlüssel. Bitte überprüfen Sie Ihren OpenWeatherMap API-Schlüssel in den Blockeinstellungen.</p>';
+        }
+        if (isset($weather_data->cod) && $weather_data->cod != 200) {
+            return '<p>Fehler beim Abrufen der Wetterdaten: ' . esc_html($weather_data->message) . '</p>';
         }
         set_transient($cache_key, $weather_data, HOUR_IN_SECONDS);
     }
 
     if (empty($weather_data)) {
-        return '<p>No weather data available</p>';
+        return '<p>Keine Wetterdaten verfügbar</p>';
     }
 
-    // Current weather (first entry)
-    $current_weather = $weather_data->list[0];
+    // Define "today" based on current server time
+    $today = date('Y-m-d');
+    $current_weather = $weather_data->list[0]; // Use earliest forecast as current approximation
     $daily_forecasts = array();
     $temps = array();
+    $pops = array();
+    $dominant_forecast = array();
+
     foreach ($weather_data->list as $forecast) {
         $date = date('Y-m-d', $forecast->dt);
+        // Skip today's data for forecast section if present
+        if ($date === $today) {
+            continue g;
+        }
         if (!isset($daily_forecasts[$date])) {
             $daily_forecasts[$date] = $forecast;
             $temps[$date] = array('max' => $forecast->main->temp, 'min' => $forecast->main->temp);
+            $pops[$date] = $forecast->pop;
+            $dominant_forecast[$date] = $forecast;
         } else {
             $temps[$date]['max'] = max($temps[$date]['max'], $forecast->main->temp);
             $temps[$date]['min'] = min($temps[$date]['min'], $forecast->main->temp);
+            $pops[$date] = max($pops[$date], $forecast->pop);
+            if ($forecast->pop > $dominant_forecast[$date]->pop) {
+                $dominant_forecast[$date] = $forecast;
+            }
         }
-        if (count($daily_forecasts) >= 7)
+        // Limit to 5 future days (API gives 5 days total, we use 1 as current)
+        if (count($daily_forecasts) >= 5) {
             break;
+        }
     }
 
     $output = '<div class="weather-forecast">';
 
-    // First column - Current weather
+    // Aktuelles Wetter (approximated from first forecast)
     $output .= '<div class="weather-day current-weather">';
     $output .= '<h2 class="weather-location">' . esc_html($location) . '</h2>';
-    $output .= '<div class="weather-current">';
-    $output .= '<div class="weather-icon-wrapper">' . get_weather_icon($current_weather->weather[0]->description) . '</div>';
+    $output .= '<div class="current-weather-main">';
+    $output .= get_weather_icon($current_weather->weather[0]->icon);
     $output .= '<div class="weather-temp-large">' . round($current_weather->main->temp) . '°</div>';
     $output .= '</div>';
-    $output .= '<div class="weather-current-meta">';
-    $output .= '<div class="weather-description">' . esc_html($current_weather->weather[0]->description) . '</div><span>&#8226;</span>';
-    $output .= '<div class="weather-feels-like">Feels like ' . round($current_weather->main->feels_like) . '°</div>';
+    $output .= '<div class="current-weather-meta">';
+    $output .= '<div>' . esc_html($current_weather->weather[0]->description) . '</div><span>•</span>';
+    $output .= '<div>Gefühlt ' . round($current_weather->main->feels_like) . '°</div>';
     $output .= '</div>';
     $output .= '</div>';
 
-    // Next 6 days
-    $days = array_slice($daily_forecasts, 1, 6, true);
+    // Nächste 5 Tage
+    $days = array_slice($daily_forecasts, 0, 5, true); // Use all available future days
     foreach ($days as $date => $forecast) {
         $day_name = strtoupper(substr(date('D', $forecast->dt), 0, 3));
+        $day_names_de = array(
+            'MON' => 'MO',
+            'TUE' => 'DI',
+            'WED' => 'MI',
+            'THU' => 'DO',
+            'FRI' => 'FR',
+            'SAT' => 'SA',
+            'SUN' => 'SO'
+        );
+        $day_name = $day_names_de[$day_name] ?? $day_name;
         $day_number = date('j', $forecast->dt);
+
+        $chosen_forecast = $dominant_forecast[$date];
+        $icon = $chosen_forecast->weather[0]->icon;
 
         $output .= '<div class="weather-day">';
         $output .= '<div class="weather-day-header">' . '<span class="weather-day-name">' . $day_name . '</span>' . ' ' . $day_number . '</div>';
-        $output .= '<div class="weather-icon-wrapper">' . get_weather_icon($forecast->weather[0]->description) . '</div>';
+        $output .= '<div class="weather-main-info">';
+        $output .= get_weather_icon($icon);
         $output .= '<div class="weather-temp-range">';
         $output .= get_temp_icon('max') . '<span class="temp-max">' . round($temps[$date]['max']) . '°</span>';
         $output .= get_temp_icon('min') . '<span class="temp-min">' . round($temps[$date]['min']) . '°</span>';
         $output .= '</div>';
-        $output .= '<div class="weather-precipitation">Regen: ' . (isset($forecast->pop) ? round($forecast->pop * 100) : 0) . '%</div>';
+        $output .= '<div class="weather-precipitation">Regen: ' . round($pops[$date] * 100) . '%</div>';
+        $output .= '</div>';
         $output .= '</div>';
     }
 
@@ -169,7 +193,6 @@ function weather_block_render_callback($attributes)
     return $output;
 }
 
-// Basic styling
 function weather_block_styles()
 {
     wp_enqueue_style(
